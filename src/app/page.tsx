@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { SelectValue, SelectTrigger, SelectItem, SelectContent, Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { JSX, SVGProps } from "react";
+import localforage from 'localforage';
 
 import { LoadingIcon } from "@/components/LoadingIcon";
 import { Button } from "@/components/ui/button";
@@ -35,17 +36,24 @@ export default function Page() {
     const [loading, setLoading] = useState(false);
     const [runIds, setRunIds] = useState<string[]>([]);
     const [drawerOpen, setDrawerOpen] = useState(false);
+    const [images, setImages] = useState<string[]>([]);
 
-    // Load saved runIds from local storage when the component mounts
     useEffect(() => {
-        const savedRunIds = JSON.parse(localStorage.getItem('savedRunIds') || '[]');
-        setRunIds(savedRunIds);
+        const fetchImages = async () => {
+            const keys = await localforage.keys();
+            const imageKeys = keys.filter(key => key.startsWith('image-'));
+            const fetchedImages = await Promise.all(
+                imageKeys.map(async key => {
+                    const image = await localforage.getItem(key);
+                    // Assuming the images are stored as strings; adjust if the structure is different.
+                    return image as string; // Cast to string to satisfy TypeScript
+                })
+            );
+            setImages(fetchedImages);
+        };
+
+        fetchImages();
     }, []);
-
-    // Save runIds to local storage whenever they change
-    useEffect(() => {
-        localStorage.setItem('savedRunIds', JSON.stringify(runIds));
-    }, [runIds]);
 
     return (
         <div className="flex h-screen">
@@ -61,25 +69,25 @@ export default function Page() {
                 </Select>
                 <form
                     className="grid w-full items-center gap-1.5"
-                    onSubmit={(e) => {
+                    onSubmit={async (e) => {
                         e.preventDefault();
 
                         if (loading) return;
                         setLoading(true);
 
-                        generate(prompt)
-                            .then((res) => {
-                                if (res) {
-                                    setRunIds((ids) => [...ids, res.run_id]);
-                                }
-                                return res;
-                            })
-                            .catch((error) => {
-                                console.error(error);
-                            })
-                            .finally(() => {
-                                setLoading(false);
-                            });
+                        try {
+                            const res = await generate(prompt);
+                            if (res) {
+                                setRunIds((ids) => [...ids, res.run_id]);
+                                // If there are additional steps that need to be awaited,
+                                // ensure they are included here.
+                            }
+                        } catch (error) {
+                            console.error(error);
+                            // Optionally, handle the error state in the UI.
+                        } finally {
+                            setLoading(false); // This will be executed after all asynchronous operations are complete.
+                        }
                     }}
                 >
                     <Input
@@ -105,9 +113,9 @@ export default function Page() {
                     </DrawerTrigger>
                     <DrawerContent>
                         <ScrollArea className="p-4 space-y-4">
-                            {runIds.map((runId, index) => (
-                                <div key={index}>
-                                    <ImageGenerationResult runId={runId} className="max-w-full" />
+                            {images.map((image, index) => (
+                                <div key={index} className="max-w-full">
+                                    <img src={image} alt={`Generated image ${index}`} className="w-full h-auto" />
                                 </div>
                             ))}
                         </ScrollArea>

@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { checkStatus } from "@/server/generate";
 import { useEffect, useState } from "react";
+import localforage from "localforage";
 
 export function ImageGenerationResult({
   runId,
@@ -20,7 +21,7 @@ export function ImageGenerationResult({
   useEffect(() => {
     if (!runId) return;
     const interval = setInterval(() => {
-      checkStatus(runId).then((res) => {
+      checkStatus(runId).then(async (res) => {
         if (res) {
           setStatus(res.status);
           setProgress(res.progress);
@@ -28,9 +29,20 @@ export function ImageGenerationResult({
         }
         if (res && res.status === "success") {
           console.log(res.outputs[0]?.data);
-          setImage(res.outputs[0]?.data?.images[0].url);
+          const imageUrl = res.outputs[0]?.data?.images[0].url;
+          setImage(imageUrl);
           setLoading(false);
           clearInterval(interval);
+
+          // Convert image to base64 and save in LocalForage
+          const response = await fetch(imageUrl);
+          const blob = await response.blob();
+          const reader = new FileReader();
+          reader.readAsDataURL(blob);
+          reader.onloadend = () => {
+            const base64data = reader.result;
+            localforage.setItem(`image-${runId}`, base64data);
+          };
         }
       });
     }, 2000);
