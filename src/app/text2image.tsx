@@ -1,6 +1,7 @@
 "use client";
 // this makes sure its front end 
 import { useEffect, useState } from "react";
+import localForage from "localforage";
 import { SelectValue, SelectTrigger, SelectItem, SelectContent, Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { JSX, SVGProps } from "react";
@@ -35,17 +36,39 @@ export default function Page() {
     const [loading, setLoading] = useState(false);
     const [runIds, setRunIds] = useState<string[]>([]);
     const [drawerOpen, setDrawerOpen] = useState(false);
+    const [images, setImages] = useState([]);
 
     // Load saved runIds from local storage when the component mounts
     useEffect(() => {
-        const savedRunIds = JSON.parse(localStorage.getItem('savedRunIds') || '[]');
-        setRunIds(savedRunIds);
+        // Fetch images from localForage when the component mounts
+        localForage.getItem('results').then(savedImages => {
+            if (savedImages) {
+                setImages(savedImages);
+            }
+        });
     }, []);
 
     // Save runIds to local storage whenever they change
-    useEffect(() => {
-        localStorage.setItem('savedRunIds', JSON.stringify(runIds));
-    }, [runIds]);
+    const handleFormSubmit = async (e) => {
+        e.preventDefault();
+        if (loading) return;
+        setLoading(true);
+
+        try {
+            const res = await generate(prompt);
+            if (res) {
+                const newImage = { id: res.run_id, src: res.image_b64 }; // Assuming res.image_b64 is your base64 image string
+                const updatedImages = [...images, newImage];
+                setImages(updatedImages);
+                await localForage.setItem('results', updatedImages);
+            }
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
 
     return (
         <div className="flex h-screen">
@@ -61,26 +84,7 @@ export default function Page() {
                 </Select>
                 <form
                     className="grid w-full items-center gap-1.5"
-                    onSubmit={(e) => {
-                        e.preventDefault();
-
-                        if (loading) return;
-                        setLoading(true);
-
-                        generate(prompt)
-                            .then((res) => {
-                                if (res) {
-                                    setRunIds((ids) => [...ids, res.run_id]);
-                                }
-                                return res;
-                            })
-                            .catch((error) => {
-                                console.error(error);
-                            })
-                            .finally(() => {
-                                setLoading(false);
-                            });
-                    }}
+                    onSubmit={handleFormSubmit}
                 >
                     <Input
                         id="picture"
@@ -104,12 +108,14 @@ export default function Page() {
                         </button>
                     </DrawerTrigger>
                     <DrawerContent>
-                        <ScrollArea className="p-4 space-y-4">
-                            {runIds.map((runId, index) => (
-                                <div key={index}>
-                                    <ImageGenerationResult runId={runId} className="max-w-full" />
-                                </div>
-                            ))}
+                        <ScrollArea className="p-4">
+                            <div className="grid grid-cols-4 gap-4">
+                                {images.map((image, index) => (
+                                    <div key={index} className="flex justify-center items-center w-1/4">
+                                        <img src={`data:image/png;base64,${image.src}`} alt={`Generated Image ${index}`} className="max-w-full h-auto" />
+                                    </div>
+                                ))}
+                            </div>
                         </ScrollArea>
                         <DrawerClose asChild>
                             <Button variant="outline">Close</Button>
